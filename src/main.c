@@ -45,63 +45,48 @@ void vApplicationStackOverflowHook(TaskHandle_t pxTask, char *pcTaskName);
 void vApplicationTickHook(void);
 
 /*-----------------------------------------------------------*/
-
 void vTask(void *pvParameters)
 {
     unsigned long counter = 0;
     unsigned long id = (unsigned long)pvParameters;
     while (1)
     {
-        printf("Task%d: %d\n", id, counter++); 
+        printf("Task%d: %d, from guest: %d\n", id, counter++, GUEST_MACHINE_NUMBER); 
+#if GUEST_MACHINE_NUMBER == 0
         vTaskDelay(1000 / portTICK_PERIOD_MS);
+#endif
+#if GUEST_MACHINE_NUMBER == 1
+        vTaskDelay(200 / portTICK_PERIOD_MS);
+#endif
     }
 }
 
-#define SHMEM_IRQ_ID (52)
 
-char* const freertos_message = (char*)0x70000000;
-char* const linux_message    = (char*)0x70002000;
-const size_t shmem_channel_size = 0x2000;
-
-
-void shmem_update_msg(int irq_count) {
-    sprintf(freertos_message, "freertos has received %d uart interrupts!\n", 
-        irq_count);
-}
 
 void uart_rx_handler(){
     static int irq_count = 0;
     printf("%s %d\n", __func__, ++irq_count);
-    shmem_update_msg(irq_count);
     uart_clear_rxirq();
-}
-
-void shmem_handler() {
-    linux_message[shmem_channel_size-1] = '\0';
-    char* end = strchr(linux_message, '\n');
-    *end = '\0';
-    printf("message from linux: %s\n", linux_message);
-}
-
-void shmem_init() {
-    memset(freertos_message, 0, shmem_channel_size);
-    memset(linux_message, 0, shmem_channel_size);
-    shmem_update_msg(0);
-    irq_set_handler(SHMEM_IRQ_ID, shmem_handler);
-    irq_set_prio(SHMEM_IRQ_ID, IRQ_MAX_PRIO);
-    irq_enable(SHMEM_IRQ_ID);
 }
 
 int main(void){
 
-    printf("Bao FreeRTOS guest\n");
+    printf("\n");
+    printf("Bao FreeRTOS guest, build date: %s\n", __TIME__);
+    printf("GUEST_MACHINE_NUMBER: %d\n", GUEST_MACHINE_NUMBER);
+    printf("VIRT_UART16550_ADDR: 0x%08X\n", VIRT_UART16550_ADDR);
+    printf("VIRT_UART16550_INTERRUPT: %d\n", VIRT_UART16550_INTERRUPT);
+    printf("\n");
+
+#if GUEST_MACHINE_NUMBER == 1
+    printf("Second machine will call tasks faster\n");
+#endif
+
 
     uart_enable_rxirq();
     irq_set_handler(UART_IRQ_ID, uart_rx_handler);
     irq_set_prio(UART_IRQ_ID, IRQ_MAX_PRIO);
     irq_enable(UART_IRQ_ID);    
-
-    shmem_init();
 
     xTaskCreate(
         vTask,
